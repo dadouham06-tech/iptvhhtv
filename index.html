@@ -1,0 +1,1914 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Tuner — Lecteur IPTV M3U</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js">
+    </script>
+    <style>
+        /* ===== VARIABLES & RESET ===== */
+        :root {
+            --bg: #0e1219;
+            --panel: #161d26;
+            --panel-2: #1c2532;
+            --line: #2a3442;
+            --amber: #e8a33d;
+            --amber-dim: #8a6a34;
+            --green: #5fd18a;
+            --red: #e05a5a;
+            --text: #e7e9ec;
+            --text-dim: #8b93a1;
+            --mono: 'JetBrains Mono', 'Courier New', monospace;
+            --sans: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+            --bottom-nav-height: 58px;
+            --radius: 10px;
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+        }
+        body {
+            background: radial-gradient(circle at 50% -10%, #1c222b 0%, var(--bg) 55%);
+            color: var(--text);
+            font-family: var(--sans);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* ===== SCROLLBAR ===== */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--line);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        /* ===== HEADER ===== */
+        header {
+            padding: 10px 14px 10px;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+            flex-shrink: 0;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .dial {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.03);
+            transition: background .2s, box-shadow .2s;
+            flex-shrink: 0;
+        }
+        .dial.live {
+            background: var(--green);
+            box-shadow: 0 0 12px 2px rgba(95, 209, 138, .6);
+        }
+        .dial.err {
+            background: var(--red);
+            box-shadow: 0 0 12px 2px rgba(224, 90, 90, .6);
+        }
+        .brand h1 {
+            font-family: var(--mono);
+            font-size: 14px;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            margin: 0;
+            color: var(--text);
+        }
+        .brand h1 span {
+            color: var(--amber);
+        }
+        .brand .status {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: .05em;
+            text-align: right;
+            line-height: 1.2;
+        }
+        .gear-btn {
+            flex-shrink: 0;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            border-radius: 6px;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            color: var(--text);
+            cursor: pointer;
+            transition: .15s;
+        }
+        .gear-btn:hover {
+            border-color: var(--amber-dim);
+            color: var(--amber);
+        }
+
+        .load-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            position: relative;
+        }
+        .load-row input[type="text"] {
+            flex: 1 1 200px;
+            min-width: 0;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            outline: none;
+        }
+        .load-row input[type="text"]:focus {
+            border-color: var(--amber-dim);
+        }
+        .load-row input[type="text"]::placeholder {
+            color: #5a6270;
+        }
+        /* datalist personnalisé (options déjà stylées par le navigateur) */
+        .load-row input[type="text"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.6);
+            cursor: pointer;
+            padding: 2px;
+        }
+
+        button {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            border-radius: 6px;
+            border: 1px solid var(--line);
+            background: var(--panel-2);
+            color: var(--text);
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: border-color .15s, color .15s, background .15s;
+            white-space: nowrap;
+        }
+        button:hover {
+            border-color: var(--amber-dim);
+            color: var(--amber);
+        }
+        button:active {
+            transform: translateY(1px);
+        }
+        button.primary {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: #1a1206;
+            font-weight: 600;
+        }
+        button.primary:hover {
+            color: #1a1206;
+            background: #f0ae4d;
+            border-color: #f0ae4d;
+        }
+        .file-btn {
+            position: relative;
+            overflow: hidden;
+        }
+        .file-btn input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .msg {
+            font-family: var(--mono);
+            font-size: 11px;
+            margin-top: 6px;
+            color: var(--text-dim);
+            min-height: 14px;
+        }
+        .msg.err {
+            color: var(--red);
+        }
+        .msg.ok {
+            color: var(--green);
+        }
+
+        /* ===== SETTINGS OVERLAY ===== */
+        .settings-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .55);
+            z-index: 40;
+            display: none;
+        }
+        .settings-overlay.open {
+            display: block;
+        }
+        .settings-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: min(300px, 84vw);
+            background: var(--panel);
+            border-left: 1px solid var(--line);
+            z-index: 41;
+            transform: translateX(100%);
+            transition: transform .2s ease;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            overflow-y: auto;
+        }
+        .settings-panel.open {
+            transform: translateX(0);
+        }
+        .settings-panel h2 {
+            font-family: var(--mono);
+            font-size: 13px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin: 0 0 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--amber);
+        }
+        .settings-panel h2 button {
+            padding: 4px 8px;
+            font-size: 14px;
+        }
+        .settings-row {
+            margin-bottom: 18px;
+        }
+        .settings-row label {
+            display: block;
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        .settings-row input[type="number"] {
+            width: 100%;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 13px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            outline: none;
+        }
+        .settings-row input[type="number"]:focus {
+            border-color: var(--amber-dim);
+        }
+        .settings-row .hint {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+        .settings-row button {
+            width: 100%;
+        }
+        .settings-row button.danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+        .settings-row button.danger:hover {
+            background: var(--red);
+            color: #1a0606;
+        }
+        .settings-row .history-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .settings-row .history-actions button {
+            flex: 1;
+            font-size: 10px;
+            padding: 6px;
+        }
+
+        /* ===== MAIN ===== */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            padding-bottom: var(--bottom-nav-height);
+        }
+
+        /* ===== PLAYER ===== */
+        .player-wrap {
+            background: #000;
+            position: relative;
+            aspect-ratio: 16/9;
+            width: 100%;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: block;
+        }
+        .player-empty {
+            position: absolute;
+            font-family: var(--mono);
+            color: #3c4351;
+            font-size: 12px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            text-align: center;
+            pointer-events: none;
+        }
+        .now-playing {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 6px 12px;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, .75), transparent);
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--amber);
+            letter-spacing: .05em;
+            display: none;
+            pointer-events: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .now-playing.show {
+            display: block;
+        }
+
+        /* ===== PAGES ===== */
+        .page-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .page {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+        .page.active {
+            display: flex;
+        }
+
+        .page-header {
+            padding: 4px 12px;
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            min-height: 32px;
+        }
+        .page-header .back-btn {
+            padding: 2px 6px;
+            font-size: 14px;
+            background: none;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text);
+            line-height: 1;
+        }
+        .page-header .back-btn:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+        }
+        .page-header .title {
+            font-weight: bold;
+            color: var(--amber);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex-shrink: 1;
+        }
+        .page-header .count {
+            margin-left: auto;
+            color: var(--text-dim);
+            font-size: 9px;
+            flex-shrink: 0;
+        }
+
+        /* ===== FILTER BAR ===== */
+        .filter-bar {
+            padding: 4px 10px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--line);
+            flex-shrink: 0;
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-bar input {
+            flex: 1;
+            min-width: 120px;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            outline: none;
+        }
+        .filter-bar input:focus {
+            border-color: var(--amber-dim);
+        }
+        .filter-bar .actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .filter-bar .actions button {
+            padding: 4px 8px;
+            font-size: 9px;
+        }
+        .filter-bar .actions button.on {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: #1a1206;
+        }
+        .filter-bar .actions button.danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+        .filter-bar .actions button.danger:hover {
+            background: var(--red);
+            color: #1a0606;
+            border-color: var(--red);
+        }
+
+        /* ===== CONTENEURS DES LISTES ===== */
+        #catContent,
+        #countryContent {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* ===== LISTES (chaînes) ===== */
+        .scroll-list {
+            flex: 1;
+            overflow-y: auto;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            min-height: 0;
+        }
+        .scroll-list li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-bottom: 1px solid var(--line);
+            cursor: pointer;
+            transition: background .1s;
+            min-height: 40px;
+        }
+        .scroll-list li:hover {
+            background: var(--panel-2);
+        }
+        .scroll-list li.active {
+            background: #26201048;
+            border-left: 3px solid var(--amber);
+            padding-left: 9px;
+        }
+        .scroll-list li .idx {
+            font-family: var(--mono);
+            font-size: 9px;
+            color: var(--text-dim);
+            width: 28px;
+            flex-shrink: 0;
+            text-align: right;
+        }
+        .scroll-list li.active .idx {
+            color: var(--amber);
+        }
+        .scroll-list li .testdot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--line);
+            flex-shrink: 0;
+        }
+        .scroll-list li .testdot.testing {
+            background: var(--amber);
+            animation: pulse 0.8s infinite;
+        }
+        .scroll-list li .testdot.ok {
+            background: var(--green);
+        }
+        .scroll-list li .testdot.fail {
+            background: var(--red);
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .2;
+            }
+        }
+
+        .scroll-list li img.logo {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            object-fit: cover;
+            background: var(--panel-2);
+            flex-shrink: 0;
+        }
+        .scroll-list li .logo-fallback {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            background: var(--panel-2);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .scroll-list li .meta {
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
+        }
+        .scroll-list li .name {
+            font-size: 12.5px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .scroll-list li .sub {
+            font-size: 9.5px;
+            color: var(--text-dim);
+            font-family: var(--mono);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-top: 1px;
+        }
+        .scroll-list li .star {
+            font-size: 14px;
+            color: #4a5160;
+            flex-shrink: 0;
+            padding: 2px;
+            transition: color .15s;
+        }
+        .scroll-list li .star.fav {
+            color: var(--amber);
+        }
+
+        /* ===== GRILLE CATÉGORIES / PAYS ===== */
+        .grid-list {
+            flex: 1;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 14px;
+            padding: 14px;
+            align-content: start;
+            min-height: 0;
+        }
+        .grid-item {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 16px 10px;
+            cursor: pointer;
+            transition: transform 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+        .grid-item:hover {
+            border-color: var(--amber-dim);
+            background: var(--panel);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+        .grid-item .flag {
+            font-size: 34px;
+            display: block;
+            line-height: 1.2;
+        }
+        .grid-item .label {
+            font-family: var(--sans);
+            font-size: 14px;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+            max-width: 100%;
+            color: var(--text);
+        }
+        .grid-item .count {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-dim);
+            display: block;
+            margin-top: 2px;
+            background: var(--bg);
+            padding: 1px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            font-weight: 400;
+        }
+        .grid-item .cat-icon {
+            font-size: 28px;
+            line-height: 1.2;
+        }
+
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-family: var(--mono);
+            font-size: 12px;
+            line-height: 1.7;
+        }
+
+        /* ===== PAGINATION ===== */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: var(--panel);
+            border-top: 1px solid var(--line);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+        .pagination button {
+            padding: 4px 10px;
+            font-size: 10px;
+        }
+        .pagination .info {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            padding: 0 6px;
+        }
+
+        /* ===== BOTTOM TABS ===== */
+        .bottom-tabs {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--bottom-nav-height);
+            background: rgba(14, 18, 25, 0.96);
+            backdrop-filter: blur(6px);
+            border-top: 1px solid var(--line);
+            display: flex;
+            align-items: stretch;
+            z-index: 30;
+        }
+        .bottom-tabs .tab {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            background: none;
+            border: none;
+            border-right: 1px solid var(--line);
+            cursor: pointer;
+            padding: 4px 2px;
+            transition: color .15s, background .15s;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .bottom-tabs .tab:last-child {
+            border-right: none;
+        }
+        .bottom-tabs .tab:hover {
+            color: var(--text);
+        }
+        .bottom-tabs .tab.active {
+            color: var(--amber);
+            background: rgba(232, 163, 61, 0.08);
+        }
+        .bottom-tabs .tab .icon {
+            font-size: 18px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .bottom-tabs .tab .label {
+            font-size: 7.5px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            padding: 0 2px;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 480px) {
+            .grid-list {
+                grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+                gap: 10px;
+                padding: 10px;
+            }
+            .grid-item .label {
+                font-size: 12px;
+            }
+            .load-row input[type="text"] {
+                font-size: 11px;
+                padding: 6px 10px;
+            }
+            .brand h1 {
+                font-size: 12px;
+            }
+            .scroll-list li .name {
+                font-size: 11.5px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== HEADER ===== -->
+    <header>
+        <div class="brand">
+            <div class="dial" id="dial"></div>
+            <h1>TUNER<span>·</span>M3U</h1>
+            <div class="status" id="statusLine">EN VEILLE</div>
+            <button class="gear-btn" id="settingsBtn" title="Paramètres">⚙</button>
+        </div>
+        <div class="load-row">
+            <input type="text" id="m3uUrl" placeholder="https://exemple.com/playlist.m3u8 ou .m3u" list="urlHistory">
+            <datalist id="urlHistory"></datalist>
+            <button class="primary" id="loadUrlBtn">Charger URL</button>
+            <button class="file-btn">Importer
+                <input type="file" id="m3uFile" accept=".m3u,.m3u8,text/plain">
+            </button>
+        </div>
+        <div class="msg" id="loadMsg"></div>
+    </header>
+
+    <!-- ===== SETTINGS ===== -->
+    <div class="settings-overlay" id="settingsOverlay"></div>
+    <div class="settings-panel" id="settingsPanel">
+        <h2>Paramètres <button id="settingsCloseBtn">✕</button></h2>
+        <div class="settings-row">
+            <label for="testTimeoutInput">Délai test (s)</label>
+            <input type="number" id="testTimeoutInput" min="2" max="60" step="1" value="8">
+            <div class="hint">Temps max par flux lors du test.</div>
+        </div>
+        <div class="settings-row">
+            <label for="pageSizeInput">Chaînes par page</label>
+            <input type="number" id="pageSizeInput" min="10" max="200" step="5" value="50">
+            <div class="hint">Nombre de chaînes affichées par page.</div>
+        </div>
+        <div class="settings-row">
+            <label>Historique des URLs</label>
+            <div class="history-actions">
+                <button id="clearHistoryBtn" class="danger">Effacer l'historique</button>
+            </div>
+            <div class="hint">Les URLs chargées avec succès sont sauvegardées et proposées automatiquement.</div>
+        </div>
+        <div class="settings-row">
+            <label>Favoris</label>
+            <button id="resetFavBtn" class="danger">Réinitialiser les favoris</button>
+        </div>
+        <div class="settings-row">
+            <label>Playlist</label>
+            <button id="resetAllBtn" class="danger">Tout effacer</button>
+        </div>
+    </div>
+
+    <!-- ===== MAIN ===== -->
+    <main>
+        <!-- PLAYER -->
+        <div class="player-wrap">
+            <video id="video" controls playsinline webkit-playsinline></video>
+            <div class="player-empty" id="playerEmpty">Aucun flux sélectionné</div>
+            <div class="now-playing" id="nowPlaying"></div>
+        </div>
+
+        <!-- PAGES -->
+        <div class="page-container">
+
+            <!-- PAGE : TOUTES -->
+            <div class="page active" id="pageAll">
+                <div class="filter-bar">
+                    <input type="text" id="filterInput" placeholder="Rechercher…">
+                    <div class="actions">
+                        <button id="favToggleBtn">★</button>
+                        <button id="testBtn">Test</button>
+                        <button id="removeFailedBtn" class="danger">Supprimer</button>
+                    </div>
+                </div>
+                <div class="page-header">
+                    <span class="title">Toutes les chaînes</span>
+                    <span class="count" id="allCount">0</span>
+                </div>
+                <ul class="scroll-list" id="allList"></ul>
+                <div class="pagination" id="allPagination">
+                    <button id="allPrev">◀</button>
+                    <span class="info" id="allPageInfo">1 / 1</span>
+                    <button id="allNext">▶</button>
+                </div>
+            </div>
+
+            <!-- PAGE : CATÉGORIES -->
+            <div class="page" id="pageCategories">
+                <div class="page-header">
+                    <button class="back-btn" id="catBackBtn" style="display:none;">←</button>
+                    <span class="title" id="catTitle">Catégories</span>
+                    <span class="count" id="catCount"></span>
+                </div>
+                <div id="catContent">
+                    <!-- grille ou liste -->
+                </div>
+                <div class="pagination" id="catPagination" style="display:none;">
+                    <button id="catPrev">◀</button>
+                    <span class="info" id="catPageInfo">1 / 1</span>
+                    <button id="catNext">▶</button>
+                </div>
+            </div>
+
+            <!-- PAGE : PAYS -->
+            <div class="page" id="pageCountries">
+                <div class="page-header">
+                    <button class="back-btn" id="countryBackBtn" style="display:none;">←</button>
+                    <span class="title" id="countryTitle">Pays</span>
+                    <span class="count" id="countryCount"></span>
+                </div>
+                <div id="countryContent">
+                    <!-- grille ou liste -->
+                </div>
+                <div class="pagination" id="countryPagination" style="display:none;">
+                    <button id="countryPrev">◀</button>
+                    <span class="info" id="countryPageInfo">1 / 1</span>
+                    <button id="countryNext">▶</button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ===== BOTTOM TABS ===== -->
+    <nav class="bottom-tabs" id="bottomTabs">
+        <button class="tab active" data-tab="all">
+            <span class="icon">📺</span>
+            <span class="label">Toutes</span>
+        </button>
+        <button class="tab" data-tab="categories">
+            <span class="icon">📂</span>
+            <span class="label">Catégories</span>
+        </button>
+        <button class="tab" data-tab="countries">
+            <span class="icon">🌍</span>
+            <span class="label">Pays</span>
+        </button>
+    </nav>
+
+    <!-- ===== JAVASCRIPT ===== -->
+    <script>
+        (function() {
+            "use strict";
+
+            // ---- DOM ----
+            const video = document.getElementById('video');
+            const playerEmpty = document.getElementById('playerEmpty');
+            const nowPlaying = document.getElementById('nowPlaying');
+            const dial = document.getElementById('dial');
+            const statusLine = document.getElementById('statusLine');
+            const loadMsg = document.getElementById('loadMsg');
+            const urlInput = document.getElementById('m3uUrl');
+            const urlDatalist = document.getElementById('urlHistory');
+
+            const pageAll = document.getElementById('pageAll');
+            const pageCategories = document.getElementById('pageCategories');
+            const pageCountries = document.getElementById('pageCountries');
+            const allList = document.getElementById('allList');
+            const allCount = document.getElementById('allCount');
+            const filterInput = document.getElementById('filterInput');
+            const favToggleBtn = document.getElementById('favToggleBtn');
+            const testBtn = document.getElementById('testBtn');
+            const removeFailedBtn = document.getElementById('removeFailedBtn');
+
+            const catContent = document.getElementById('catContent');
+            const catTitle = document.getElementById('catTitle');
+            const catCount = document.getElementById('catCount');
+            const catBackBtn = document.getElementById('catBackBtn');
+            const catPagination = document.getElementById('catPagination');
+            const catPrev = document.getElementById('catPrev');
+            const catNext = document.getElementById('catNext');
+            const catPageInfo = document.getElementById('catPageInfo');
+
+            const countryContent = document.getElementById('countryContent');
+            const countryTitle = document.getElementById('countryTitle');
+            const countryCount = document.getElementById('countryCount');
+            const countryBackBtn = document.getElementById('countryBackBtn');
+            const countryPagination = document.getElementById('countryPagination');
+            const countryPrev = document.getElementById('countryPrev');
+            const countryNext = document.getElementById('countryNext');
+            const countryPageInfo = document.getElementById('countryPageInfo');
+
+            const settingsBtn = document.getElementById('settingsBtn');
+            const settingsPanel = document.getElementById('settingsPanel');
+            const settingsOverlay = document.getElementById('settingsOverlay');
+            const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+            const testTimeoutInput = document.getElementById('testTimeoutInput');
+            const pageSizeInput = document.getElementById('pageSizeInput');
+            const resetFavBtn = document.getElementById('resetFavBtn');
+            const resetAllBtn = document.getElementById('resetAllBtn');
+            const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+            const allPrev = document.getElementById('allPrev');
+            const allNext = document.getElementById('allNext');
+            const allPageInfo = document.getElementById('allPageInfo');
+
+            const bottomTabs = document.querySelectorAll('.bottom-tabs .tab');
+
+            // ---- ÉTATS ----
+            let channels = [];
+            let activeIndex = -1;
+            let hls = null;
+            const testStatus = {};
+            let testRunning = false;
+            let testCancelled = false;
+
+            let favorites = {};
+            try { favorites = JSON.parse(localStorage.getItem('tuner_favorites') || '{}'); } catch (e) {}
+
+            let showFavoritesOnly = false;
+            let currentTab = 'all';
+
+            let catDrill = null;
+            let countryDrill = null;
+            let catPage = 1;
+            let countryPage = 1;
+
+            let testTimeoutMs = 8000;
+            try {
+                const saved = parseInt(localStorage.getItem('tuner_test_timeout'), 10);
+                if (saved && saved >= 2 && saved <= 60) {
+                    testTimeoutMs = saved * 1000;
+                    testTimeoutInput.value = saved;
+                }
+            } catch (e) {}
+
+            let pageSize = 50;
+            try {
+                const savedPage = parseInt(localStorage.getItem('tuner_page_size'), 10);
+                if (savedPage && savedPage >= 10 && savedPage <= 200) {
+                    pageSize = savedPage;
+                    pageSizeInput.value = savedPage;
+                }
+            } catch (e) {}
+
+            let currentPageAll = 1;
+            let filteredChannels = [];
+
+            // ---- HISTORIQUE DES URLs ----
+            const HISTORY_KEY = 'tuner_url_history';
+            const MAX_HISTORY = 20;
+
+            function loadUrlHistory() {
+                try {
+                    const data = localStorage.getItem(HISTORY_KEY);
+                    if (data) return JSON.parse(data);
+                } catch (e) { /* ignore */ }
+                return [];
+            }
+
+            function saveUrlHistory(history) {
+                try {
+                    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+                } catch (e) { /* ignore */ }
+            }
+
+            function addUrlToHistory(url) {
+                if (!url) return;
+                let history = loadUrlHistory();
+                // Retirer l'URL si déjà présente
+                history = history.filter(item => item.url !== url);
+                // Ajouter en tête avec timestamp
+                history.unshift({ url: url, lastUsed: Date.now() });
+                // Limiter la taille
+                if (history.length > MAX_HISTORY) {
+                    history = history.slice(0, MAX_HISTORY);
+                }
+                saveUrlHistory(history);
+                updateDatalist(history);
+            }
+
+            function updateDatalist(history) {
+                urlDatalist.innerHTML = '';
+                history.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.url;
+                    urlDatalist.appendChild(option);
+                });
+            }
+
+            function clearUrlHistory() {
+                saveUrlHistory([]);
+                updateDatalist([]);
+            }
+
+            // Initialisation de la datalist
+            (function initHistory() {
+                const history = loadUrlHistory();
+                updateDatalist(history);
+                // Si une dernière URL est stockée, on la met dans le champ
+                if (history.length > 0 && !urlInput.value) {
+                    urlInput.value = history[0].url;
+                }
+            })();
+
+            // ---- DRAPEAUX ----
+            const countryFlags = {
+                'FR': '🇫🇷',
+                'GB': '🇬🇧',
+                'UK': '🇬🇧',
+                'US': '🇺🇸',
+                'DE': '🇩🇪',
+                'IT': '🇮🇹',
+                'ES': '🇪🇸',
+                'PT': '🇵🇹',
+                'NL': '🇳🇱',
+                'BE': '🇧🇪',
+                'CH': '🇨🇭',
+                'AT': '🇦🇹',
+                'SE': '🇸🇪',
+                'NO': '🇳🇴',
+                'DK': '🇩🇰',
+                'FI': '🇫🇮',
+                'PL': '🇵🇱',
+                'RU': '🇷🇺',
+                'UA': '🇺🇦',
+                'TR': '🇹🇷',
+                'MA': '🇲🇦',
+                'DZ': '🇩🇿',
+                'TN': '🇹🇳',
+                'EG': '🇪🇬',
+                'SA': '🇸🇦',
+                'AE': '🇦🇪',
+                'IN': '🇮🇳',
+                'CN': '🇨🇳',
+                'JP': '🇯🇵',
+                'KR': '🇰🇷',
+                'BR': '🇧🇷',
+                'AR': '🇦🇷',
+                'MX': '🇲🇽',
+                'CA': '🇨🇦',
+                'AU': '🇦🇺',
+                'NZ': '🇳🇿',
+                'ZA': '🇿🇦',
+                'IL': '🇮🇱',
+                'PK': '🇵🇰',
+                'NG': '🇳🇬',
+                'KE': '🇰🇪',
+                'GH': '🇬🇭',
+                'SN': '🇸🇳',
+                'CI': '🇨🇮',
+                'CM': '🇨🇲',
+                'GR': '🇬🇷',
+                'IE': '🇮🇪'
+            };
+
+            function getFlag(code) {
+                const c = (code || '').toUpperCase();
+                return countryFlags[c] || '🏳️';
+            }
+
+            // ---- UTILITAIRES ----
+            function setMsg(text, type) {
+                loadMsg.textContent = text || '';
+                loadMsg.className = 'msg' + (type ? ' ' + type : '');
+            }
+
+            function setStatus(text, state) {
+                statusLine.textContent = text;
+                dial.className = 'dial' + (state ? ' ' + state : '');
+            }
+
+            function saveFavorites() {
+                try { localStorage.setItem('tuner_favorites', JSON.stringify(favorites)); } catch (e) {}
+            }
+
+            function savePageSize() {
+                try { localStorage.setItem('tuner_page_size', String(pageSize)); } catch (e) {}
+            }
+
+            try {
+                const savedUrl = localStorage.getItem('tuner_last_url');
+                if (savedUrl && !urlInput.value) urlInput.value = savedUrl;
+            } catch (e) {}
+
+            // ---- PARSING M3U ----
+            function parseM3U(content) {
+                const lines = content.split(/\r?\n/);
+                const result = [];
+                let current = null;
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    if (line.startsWith('#EXTINF')) {
+                        const infoPart = line.substring(line.indexOf(':') + 1);
+                        const commaIdx = infoPart.lastIndexOf(',');
+                        const attrsPart = commaIdx >= 0 ? infoPart.substring(0, commaIdx) : infoPart;
+                        const name = commaIdx >= 0 ? infoPart.substring(commaIdx + 1).trim() : 'Chaîne sans nom';
+                        const logoMatch = attrsPart.match(/tvg-logo="([^"]*)"/i);
+                        const groupMatch = attrsPart.match(/group-title="([^"]*)"/i);
+                        const countryMatch = attrsPart.match(/tvg-country="([^"]*)"/i);
+                        let group = groupMatch ? groupMatch[1].trim() : '';
+                        let country = countryMatch ? countryMatch[1].trim().toUpperCase() : '';
+                        if (!country && group) {
+                            const prefixMatch = group.match(/^([A-Za-zÀ-ÿ]{2,4})\s*[\|\-:]\s*(.+)$/);
+                            if (prefixMatch) country = prefixMatch[1].toUpperCase();
+                        }
+                        current = {
+                            name: name,
+                            logo: logoMatch ? logoMatch[1] : '',
+                            group: group,
+                            country: country,
+                            url: ''
+                        };
+                    } else if (line.startsWith('#')) {
+                        continue;
+                    } else {
+                        if (!current) {
+                            current = { name: 'Chaîne ' + (result.length + 1), logo: '', group: '', country: '',
+                            url: '' };
+                        }
+                        current.url = line;
+                        result.push(current);
+                        current = null;
+                    }
+                }
+                return result;
+            }
+
+            // ---- LECTURE HLS ----
+            function playChannel(idx) {
+                const ch = channels[idx];
+                if (!ch) return;
+                activeIndex = idx;
+                renderAllList();
+
+                playerEmpty.style.display = 'none';
+                nowPlaying.textContent = ch.name;
+                nowPlaying.classList.add('show');
+                setStatus('CONNEXION…', '');
+
+                if (hls) { hls.destroy();
+                    hls = null; }
+                video.removeAttribute('src');
+                video.load();
+
+                const url = ch.url;
+                if (window.Hls && Hls.isSupported()) {
+                    hls = new Hls({ enableWorker: true });
+                    hls.loadSource(url);
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        video.play().catch(function() {});
+                        setStatus('EN DIRECT — ' + ch.name, 'live');
+                    });
+                    hls.on(Hls.Events.ERROR, function(event, data) {
+                        if (data.fatal) {
+                            setStatus('ERREUR FLUX', 'err');
+                            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+                            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+                            else { hls.destroy();
+                                hls = null; }
+                        }
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = url;
+                    video.addEventListener('loadedmetadata', function() { video.play().catch(function() {});
+                        setStatus('EN DIRECT — ' + ch.name, 'live'); }, { once: true });
+                    video.addEventListener('error', function() { setStatus('ERREUR FLUX', 'err'); }, { once: true });
+                } else {
+                    video.src = url;
+                    video.play().catch(function() {});
+                    setStatus('EN DIRECT — ' + ch.name, 'live');
+                }
+            }
+            video.addEventListener('error', function() { setStatus('ERREUR LECTURE', 'err'); });
+
+            // ---- RENDU : PAGE "TOUTES" avec pagination ----
+            function computeFiltered() {
+                const filter = filterInput.value.toLowerCase();
+                filteredChannels = channels
+                    .map((ch, idx) => ({ ch, idx }))
+                    .filter(item => {
+                        if (showFavoritesOnly && !favorites[item.ch.url]) return false;
+                        if (!filter) return true;
+                        return item.ch.name.toLowerCase().includes(filter) ||
+                            (item.ch.group || '').toLowerCase().includes(filter) ||
+                            (item.ch.country || '').toLowerCase().includes(filter);
+                    });
+                currentPageAll = 1;
+            }
+
+            function renderAllList() {
+                computeFiltered();
+                const total = filteredChannels.length;
+                const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                if (currentPageAll > totalPages) currentPageAll = totalPages;
+                if (currentPageAll < 1) currentPageAll = 1;
+                const start = (currentPageAll - 1) * pageSize;
+                const end = Math.min(start + pageSize, total);
+                const pageItems = filteredChannels.slice(start, end);
+
+                allCount.textContent = total + ' / ' + channels.length;
+                allPageInfo.textContent = currentPageAll + ' / ' + totalPages;
+
+                allList.innerHTML = '';
+                if (channels.length === 0) {
+                    const li = document.createElement('li');
+                    li.className = 'empty-state';
+                    li.style.cursor = 'default';
+                    li.textContent = 'Chargez une playlist M3U.';
+                    allList.appendChild(li);
+                    return;
+                }
+                if (total === 0) {
+                    const li = document.createElement('li');
+                    li.className = 'empty-state';
+                    li.style.cursor = 'default';
+                    li.textContent = showFavoritesOnly ? 'Aucun favori.' : 'Aucune chaîne ne correspond.';
+                    allList.appendChild(li);
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                pageItems.forEach(({ ch, idx }) => {
+                    const li = document.createElement('li');
+                    li.className = idx === activeIndex ? 'active' : '';
+                    li.dataset.idx = idx;
+
+                    const idxEl = document.createElement('span');
+                    idxEl.className = 'idx';
+                    idxEl.textContent = String(idx + 1).padStart(3, '0');
+                    li.appendChild(idxEl);
+
+                    const dot = document.createElement('span');
+                    const st = testStatus[ch.url];
+                    dot.className = 'testdot' + (st ? ' ' + st : '');
+                    li.appendChild(dot);
+
+                    if (ch.logo) {
+                        const img = document.createElement('img');
+                        img.className = 'logo';
+                        img.src = ch.logo;
+                        img.loading = 'lazy';
+                        img.onerror = function() {
+                            const fb = document.createElement('div');
+                            fb.className = 'logo-fallback';
+                            fb.textContent = (ch.name || '?').charAt(0).toUpperCase();
+                            img.replaceWith(fb);
+                        };
+                        li.appendChild(img);
+                    } else {
+                        const fb = document.createElement('div');
+                        fb.className = 'logo-fallback';
+                        fb.textContent = (ch.name || '?').charAt(0).toUpperCase();
+                        li.appendChild(fb);
+                    }
+
+                    const meta = document.createElement('div');
+                    meta.className = 'meta';
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'name';
+                    nameEl.textContent = ch.name;
+                    meta.appendChild(nameEl);
+                    if (ch.group) {
+                        const subEl = document.createElement('div');
+                        subEl.className = 'sub';
+                        subEl.textContent = ch.group + (ch.country ? ' · ' + getFlag(ch.country) + ' ' + ch.country : '');
+                        meta.appendChild(subEl);
+                    }
+                    li.appendChild(meta);
+
+                    const star = document.createElement('span');
+                    star.className = 'star' + (favorites[ch.url] ? ' fav' : '');
+                    star.textContent = favorites[ch.url] ? '★' : '☆';
+                    star.title = 'Favori';
+                    star.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        if (favorites[ch.url]) delete favorites[ch.url];
+                        else favorites[ch.url] = true;
+                        saveFavorites();
+                        renderAllList();
+                        if (currentTab === 'categories') renderCategoriesPage();
+                        if (currentTab === 'countries') renderCountriesPage();
+                    });
+                    li.appendChild(star);
+
+                    li.addEventListener('click', function() { playChannel(idx); });
+                    fragment.appendChild(li);
+                });
+                allList.appendChild(fragment);
+            }
+
+            // ---- FILTRE & FAVORIS ----
+            filterInput.addEventListener('input', renderAllList);
+            favToggleBtn.addEventListener('click', function() {
+                showFavoritesOnly = !showFavoritesOnly;
+                favToggleBtn.className = showFavoritesOnly ? 'on' : '';
+                renderAllList();
+            });
+
+            // ---- PAGINATION TOUTES ----
+            allPrev.addEventListener('click', function() {
+                if (currentPageAll > 1) { currentPageAll--;
+                    renderAllList(); }
+            });
+            allNext.addEventListener('click', function() {
+                const totalPages = Math.max(1, Math.ceil(filteredChannels.length / pageSize));
+                if (currentPageAll < totalPages) { currentPageAll++;
+                    renderAllList(); }
+            });
+
+            // ---- SUPPRIMER ÉCHECS ----
+            removeFailedBtn.addEventListener('click', function() {
+                const failedUrls = channels.filter(ch => testStatus[ch.url] === 'fail').map(ch => ch.url);
+                if (failedUrls.length === 0) {
+                    setMsg('Aucune chaîne en échec (lancez d\'abord le test).', 'err');
+                    return;
+                }
+                channels = channels.filter(ch => testStatus[ch.url] !== 'fail');
+                failedUrls.forEach(url => {
+                    delete testStatus[url];
+                    delete favorites[url];
+                });
+                saveFavorites();
+                activeIndex = -1;
+                renderAllList();
+                if (currentTab === 'categories') renderCategoriesPage();
+                if (currentTab === 'countries') renderCountriesPage();
+                setMsg(failedUrls.length + ' chaîne(s) en échec supprimée(s).', 'ok');
+            });
+
+            // ---- RENDU CATÉGORIES (avec pagination et défilement) ----
+            function renderCategoriesPage() {
+                if (catDrill === null) {
+                    catPagination.style.display = 'none';
+                    catBackBtn.style.display = 'none';
+                    catTitle.textContent = 'Catégories';
+                    const cats = [];
+                    channels.forEach(ch => {
+                        const g = ch.group || 'Sans catégorie';
+                        if (!cats.includes(g)) cats.push(g);
+                    });
+                    cats.sort();
+                    catCount.textContent = cats.length + ' catégories';
+                    catContent.innerHTML = '';
+                    if (cats.length === 0) {
+                        catContent.innerHTML = '<div class="empty-state">Aucune catégorie trouvée.</div>';
+                        return;
+                    }
+                    const grid = document.createElement('div');
+                    grid.className = 'grid-list';
+                    cats.forEach(cat => {
+                        const count = channels.filter(ch => (ch.group || 'Sans catégorie') === cat).length;
+                        const div = document.createElement('div');
+                        div.className = 'grid-item';
+                        const icon = document.createElement('span');
+                        icon.className = 'cat-icon';
+                        icon.textContent = '📁';
+                        div.appendChild(icon);
+                        const label = document.createElement('span');
+                        label.className = 'label';
+                        label.textContent = cat;
+                        div.appendChild(label);
+                        const cnt = document.createElement('span');
+                        cnt.className = 'count';
+                        cnt.textContent = count + ' chaîne' + (count > 1 ? 's' : '');
+                        div.appendChild(cnt);
+                        div.addEventListener('click', function() {
+                            catDrill = cat;
+                            catPage = 1;
+                            renderCategoriesPage();
+                        });
+                        grid.appendChild(div);
+                    });
+                    catContent.appendChild(grid);
+                } else {
+                    catPagination.style.display = 'flex';
+                    catBackBtn.style.display = 'inline-block';
+                    catTitle.textContent = catDrill;
+                    const list = channels.filter(ch => (ch.group || 'Sans catégorie') === catDrill);
+                    const total = list.length;
+                    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                    if (catPage > totalPages) catPage = totalPages;
+                    if (catPage < 1) catPage = 1;
+                    const start = (catPage - 1) * pageSize;
+                    const end = Math.min(start + pageSize, total);
+                    const pageItems = list.slice(start, end);
+
+                    catCount.textContent = total + ' chaîne' + (total > 1 ? 's' : '');
+                    catPageInfo.textContent = catPage + ' / ' + totalPages;
+
+                    catContent.innerHTML = '';
+                    if (total === 0) {
+                        catContent.innerHTML = '<div class="empty-state">Aucune chaîne dans cette catégorie.</div>';
+                        catPagination.style.display = 'none';
+                        return;
+                    }
+                    const ul = document.createElement('ul');
+                    ul.className = 'scroll-list';
+                    pageItems.forEach(ch => {
+                        const realIdx = channels.indexOf(ch);
+                        const li = document.createElement('li');
+                        li.className = realIdx === activeIndex ? 'active' : '';
+                        li.dataset.idx = realIdx;
+                        const idxEl = document.createElement('span');
+                        idxEl.className = 'idx';
+                        idxEl.textContent = String(realIdx + 1).padStart(3, '0');
+                        li.appendChild(idxEl);
+
+                        const dot = document.createElement('span');
+                        const st = testStatus[ch.url];
+                        dot.className = 'testdot' + (st ? ' ' + st : '');
+                        li.appendChild(dot);
+
+                        const nameEl = document.createElement('span');
+                        nameEl.className = 'name';
+                        nameEl.textContent = ch.name;
+                        li.appendChild(nameEl);
+
+                        const star = document.createElement('span');
+                        star.className = 'star' + (favorites[ch.url] ? ' fav' : '');
+                        star.textContent = favorites[ch.url] ? '★' : '☆';
+                        star.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            if (favorites[ch.url]) delete favorites[ch.url];
+                            else favorites[ch.url] = true;
+                            saveFavorites();
+                            renderCategoriesPage();
+                            renderAllList();
+                        });
+                        li.appendChild(star);
+
+                        li.addEventListener('click', function() { playChannel(realIdx); });
+                        ul.appendChild(li);
+                    });
+                    catContent.appendChild(ul);
+
+                    catPrev.onclick = function() {
+                        if (catPage > 1) { catPage--;
+                            renderCategoriesPage(); }
+                    };
+                    catNext.onclick = function() {
+                        if (catPage < totalPages) { catPage++;
+                            renderCategoriesPage(); }
+                    };
+                }
+            }
+
+            catBackBtn.addEventListener('click', function() {
+                catDrill = null;
+                renderCategoriesPage();
+            });
+
+            // ---- RENDU PAYS (avec pagination et défilement) ----
+            function renderCountriesPage() {
+                if (countryDrill === null) {
+                    countryPagination.style.display = 'none';
+                    countryBackBtn.style.display = 'none';
+                    countryTitle.textContent = 'Pays';
+                    const countries = [];
+                    channels.forEach(ch => {
+                        const c = ch.country || 'Autre';
+                        if (!countries.includes(c)) countries.push(c);
+                    });
+                    countries.sort();
+                    countryCount.textContent = countries.length + ' pays';
+                    countryContent.innerHTML = '';
+                    if (countries.length === 0) {
+                        countryContent.innerHTML = '<div class="empty-state">Aucun pays trouvé.</div>';
+                        return;
+                    }
+                    const grid = document.createElement('div');
+                    grid.className = 'grid-list';
+                    countries.forEach(code => {
+                        const count = channels.filter(ch => (ch.country || 'Autre') === code).length;
+                        const flag = getFlag(code);
+                        const label = code === 'Autre' ? 'Autre' : code;
+                        const div = document.createElement('div');
+                        div.className = 'grid-item';
+                        const flagEl = document.createElement('span');
+                        flagEl.className = 'flag';
+                        flagEl.textContent = flag;
+                        div.appendChild(flagEl);
+                        const labelEl = document.createElement('span');
+                        labelEl.className = 'label';
+                        labelEl.textContent = label;
+                        div.appendChild(labelEl);
+                        const cnt = document.createElement('span');
+                        cnt.className = 'count';
+                        cnt.textContent = count + ' chaîne' + (count > 1 ? 's' : '');
+                        div.appendChild(cnt);
+                        div.addEventListener('click', function() {
+                            countryDrill = code;
+                            countryPage = 1;
+                            renderCountriesPage();
+                        });
+                        grid.appendChild(div);
+                    });
+                    countryContent.appendChild(grid);
+                } else {
+                    countryPagination.style.display = 'flex';
+                    countryBackBtn.style.display = 'inline-block';
+                    const displayName = countryDrill === 'Autre' ? 'Autre' : countryDrill;
+                    countryTitle.textContent = getFlag(countryDrill) + ' ' + displayName;
+                    const list = channels.filter(ch => (ch.country || 'Autre') === countryDrill);
+                    const total = list.length;
+                    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                    if (countryPage > totalPages) countryPage = totalPages;
+                    if (countryPage < 1) countryPage = 1;
+                    const start = (countryPage - 1) * pageSize;
+                    const end = Math.min(start + pageSize, total);
+                    const pageItems = list.slice(start, end);
+
+                    countryCount.textContent = total + ' chaîne' + (total > 1 ? 's' : '');
+                    countryPageInfo.textContent = countryPage + ' / ' + totalPages;
+
+                    countryContent.innerHTML = '';
+                    if (total === 0) {
+                        countryContent.innerHTML = '<div class="empty-state">Aucune chaîne pour ce pays.</div>';
+                        countryPagination.style.display = 'none';
+                        return;
+                    }
+                    const ul = document.createElement('ul');
+                    ul.className = 'scroll-list';
+                    pageItems.forEach(ch => {
+                        const realIdx = channels.indexOf(ch);
+                        const li = document.createElement('li');
+                        li.className = realIdx === activeIndex ? 'active' : '';
+                        li.dataset.idx = realIdx;
+                        const idxEl = document.createElement('span');
+                        idxEl.className = 'idx';
+                        idxEl.textContent = String(realIdx + 1).padStart(3, '0');
+                        li.appendChild(idxEl);
+
+                        const dot = document.createElement('span');
+                        const st = testStatus[ch.url];
+                        dot.className = 'testdot' + (st ? ' ' + st : '');
+                        li.appendChild(dot);
+
+                        const nameEl = document.createElement('span');
+                        nameEl.className = 'name';
+                        nameEl.textContent = ch.name;
+                        li.appendChild(nameEl);
+
+                        const star = document.createElement('span');
+                        star.className = 'star' + (favorites[ch.url] ? ' fav' : '');
+                        star.textContent = favorites[ch.url] ? '★' : '☆';
+                        star.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            if (favorites[ch.url]) delete favorites[ch.url];
+                            else favorites[ch.url] = true;
+                            saveFavorites();
+                            renderCountriesPage();
+                            renderAllList();
+                        });
+                        li.appendChild(star);
+
+                        li.addEventListener('click', function() { playChannel(realIdx); });
+                        ul.appendChild(li);
+                    });
+                    countryContent.appendChild(ul);
+
+                    countryPrev.onclick = function() {
+                        if (countryPage > 1) { countryPage--;
+                            renderCountriesPage(); }
+                    };
+                    countryNext.onclick = function() {
+                        if (countryPage < totalPages) { countryPage++;
+                            renderCountriesPage(); }
+                    };
+                }
+            }
+
+            countryBackBtn.addEventListener('click', function() {
+                countryDrill = null;
+                renderCountriesPage();
+            });
+
+            // ---- NAVIGATION ONGLETS ----
+            function switchTab(tab) {
+                currentTab = tab;
+                bottomTabs.forEach(el => {
+                    el.classList.toggle('active', el.dataset.tab === tab);
+                });
+                pageAll.classList.toggle('active', tab === 'all');
+                pageCategories.classList.toggle('active', tab === 'categories');
+                pageCountries.classList.toggle('active', tab === 'countries');
+
+                if (tab === 'categories') { catDrill = null;
+                    renderCategoriesPage(); }
+                if (tab === 'countries') { countryDrill = null;
+                    renderCountriesPage(); }
+                if (tab === 'all') { renderAllList(); }
+            }
+
+            bottomTabs.forEach(el => {
+                el.addEventListener('click', function() {
+                    switchTab(el.dataset.tab);
+                });
+            });
+
+            // ---- TEST DES CHAÎNES (parallèle) ----
+            function testOneChannel(url, timeoutMs) {
+                return new Promise(function(resolve) {
+                    let settled = false;
+                    const testVideo = document.createElement('video');
+                    testVideo.muted = true;
+                    testVideo.playsInline = true;
+                    let testHls = null;
+
+                    function finish(result) {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        if (testHls) { try { testHls.destroy(); } catch (e) {} }
+                        testVideo.removeAttribute('src');
+                        try { testVideo.load(); } catch (e) {}
+                        resolve(result);
+                    }
+                    const timer = setTimeout(function() { finish('fail'); }, timeoutMs);
+
+                    if (window.Hls && Hls.isSupported()) {
+                        testHls = new Hls({ enableWorker: true });
+                        testHls.on(Hls.Events.MANIFEST_PARSED, function() { finish('ok'); });
+                        testHls.on(Hls.Events.ERROR, function(event, data) { if (data.fatal) finish('fail'); });
+                        testHls.loadSource(url);
+                        testHls.attachMedia(testVideo);
+                    } else if (testVideo.canPlayType('application/vnd.apple.mpegurl')) {
+                        testVideo.addEventListener('loadedmetadata', function() { finish('ok'); }, { once: true });
+                        testVideo.addEventListener('error', function() { finish('fail'); }, { once: true });
+                        testVideo.src = url;
+                    } else {
+                        testVideo.addEventListener('loadedmetadata', function() { finish('ok'); }, { once: true });
+                        testVideo.addEventListener('error', function() { finish('fail'); }, { once: true });
+                        testVideo.src = url;
+                    }
+                });
+            }
+
+            async function testAllChannels() {
+                let toTest = channels.filter(ch => {
+                    if (showFavoritesOnly && !favorites[ch.url]) return false;
+                    return true;
+                });
+                if (toTest.length === 0) { setMsg('Aucune chaîne à tester.', 'err'); return; }
+
+                testRunning = true;
+                testCancelled = false;
+                testBtn.textContent = 'Arrêter';
+                let okCount = 0,
+                    failCount = 0;
+                let index = 0;
+                const poolSize = 5;
+                const total = toTest.length;
+
+                toTest.forEach(ch => { testStatus[ch.url] = 'testing'; });
+                renderAllList();
+
+                while (index < total && !testCancelled) {
+                    const batch = [];
+                    while (batch.length < poolSize && index < total) {
+                        batch.push(toTest[index]);
+                        index++;
+                    }
+                    const promises = batch.map(ch =>
+                        testOneChannel(ch.url, testTimeoutMs).then(result => {
+                            testStatus[ch.url] = result;
+                            if (result === 'ok') okCount++;
+                            else failCount++;
+                            renderAllList();
+                            return result;
+                        })
+                    );
+                    await Promise.all(promises);
+                    if (testCancelled) break;
+                }
+
+                testRunning = false;
+                testBtn.textContent = 'Test';
+                const msg = testCancelled ?
+                    'Test interrompu — ' + okCount + ' OK, ' + failCount + ' échec(s).' :
+                    'Test terminé — ' + okCount + ' OK, ' + failCount + ' échec(s).';
+                setMsg(msg, 'ok');
+                renderAllList();
+            }
+
+            testBtn.addEventListener('click', function() {
+                if (testRunning) {
+                    testCancelled = true;
+                } else {
+                    testAllChannels();
+                }
+            });
+
+            // ---- PARAMÈTRES ----
+            function openSettings() {
+                settingsPanel.classList.add('open');
+                settingsOverlay.classList.add('open');
+            }
+
+            function closeSettings() {
+                settingsPanel.classList.remove('open');
+                settingsOverlay.classList.remove('open');
+            }
+            settingsBtn.addEventListener('click', openSettings);
+            settingsCloseBtn.addEventListener('click', closeSettings);
+            settingsOverlay.addEventListener('click', closeSettings);
+
+            testTimeoutInput.addEventListener('change', function() {
+                let val = parseInt(testTimeoutInput.value, 10);
+                if (!val || val < 2) val = 2;
+                if (val > 60) val = 60;
+                testTimeoutInput.value = val;
+                testTimeoutMs = val * 1000;
+                try { localStorage.setItem('tuner_test_timeout', String(val)); } catch (e) {}
+            });
+
+            pageSizeInput.addEventListener('change', function() {
+                let val = parseInt(pageSizeInput.value, 10);
+                if (!val || val < 10) val = 10;
+                if (val > 200) val = 200;
+                pageSizeInput.value = val;
+                pageSize = val;
+                savePageSize();
+                renderAllList();
+                if (currentTab === 'categories') renderCategoriesPage();
+                if (currentTab === 'countries') renderCountriesPage();
+            });
+
+            resetFavBtn.addEventListener('click', function() {
+                if (!confirm('Retirer toutes les chaînes de vos favoris ?')) return;
+                favorites = {};
+                saveFavorites();
+                renderAllList();
+                if (currentTab === 'categories') renderCategoriesPage();
+                if (currentTab === 'countries') renderCountriesPage();
+            });
+
+            clearHistoryBtn.addEventListener('click', function() {
+                if (!confirm('Effacer tout l\'historique des URLs ?')) return;
+                clearUrlHistory();
+                setMsg('Historique effacé.', 'ok');
+            });
+
+            resetAllBtn.addEventListener('click', function() {
+                if (!confirm('Effacer la playlist chargée et tous les favoris ?')) return;
+                channels = [];
+                Object.keys(testStatus).forEach(k => delete testStatus[k]);
+                favorites = {};
+                showFavoritesOnly = false;
+                favToggleBtn.className = '';
+                filterInput.value = '';
+                urlInput.value = '';
+                activeIndex = -1;
+                catDrill = null;
+                countryDrill = null;
+                saveFavorites();
+                try { localStorage.removeItem('tuner_last_url'); } catch (e) {}
+                renderAllList();
+                renderCategoriesPage();
+                renderCountriesPage();
+                setMsg('Playlist et favoris effacés.', 'ok');
+                setStatus('EN VEILLE', '');
+            });
+
+            // ---- CHARGEMENT PLAYLIST ----
+            function loadFromContent(content, sourceLabel, urlUsed) {
+                if (!content || content.indexOf('#EXTM3U') === -1) {
+                    setMsg('Fichier invalide : en-tête #EXTM3U introuvable.', 'err');
+                    return;
+                }
+                const parsed = parseM3U(content);
+                if (parsed.length === 0) { setMsg('Aucune chaîne trouvée.', 'err'); return; }
+                channels = parsed;
+                activeIndex = -1;
+                Object.keys(testStatus).forEach(k => delete testStatus[k]);
+                filterInput.value = '';
+                catDrill = null;
+                countryDrill = null;
+                catPage = countryPage = 1;
+                renderAllList();
+                renderCategoriesPage();
+                renderCountriesPage();
+                setMsg(parsed.length + ' chaîne(s) chargée(s) depuis ' + sourceLabel + '.', 'ok');
+                setStatus('PLAYLIST CHARGÉE', '');
+
+                // Ajouter l'URL à l'historique si elle est fournie
+                if (urlUsed) {
+                    addUrlToHistory(urlUsed);
+                    try { localStorage.setItem('tuner_last_url', urlUsed); } catch (e) {}
+                }
+            }
+
+            function loadFromUrl(url) {
+                if (!url) { setMsg('Entrez une URL de playlist M3U.', 'err'); return; }
+                setMsg('Chargement…', '');
+                fetch(url, { cache: 'no-store' })
+                    .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+                    .then(text => { loadFromContent(text, "l'URL", url); })
+                    .catch(err => { setMsg('Échec du chargement (' + err.message + '). CORS ?', 'err'); });
+            }
+
+            document.getElementById('loadUrlBtn').addEventListener('click', function() { loadFromUrl(urlInput.value
+                    .trim()); });
+            urlInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') loadFromUrl(urlInput.value.trim()); });
+            document.getElementById('m3uFile').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function() {
+                    // Pour un fichier, on ne stocke pas d'URL, mais on peut stocker le nom ?
+                    loadFromContent(reader.result, 'le fichier "' + file.name + '"', null);
+                };
+                reader.onerror = function() { setMsg('Impossible de lire le fichier.', 'err'); };
+                reader.readAsText(file);
+            });
+
+            // ---- INIT ----
+            renderAllList();
+            renderCategoriesPage();
+            renderCountriesPage();
+            switchTab('all');
+
+        })();
+    </script>
+
+</body>
+</html>
